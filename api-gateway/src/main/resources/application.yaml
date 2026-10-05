@@ -22,22 +22,13 @@ spring:
               filters:
                 - StripPrefix=1
 
-            # Route 2: /product/** → product-service (port 8082)
-            # Ví dụ: /product/api/products → /api/products
-            - id: product-service-route
+            # Route 2: /api/courses/** → course-service (port 8082)
+            - id: course-service-direct-route
               uri: http://localhost:8082
               predicates:
-                - Path=/product/**
-              filters:
-                - StripPrefix=1
+                - Path=/api/courses/**
 
-            # Route 3: /api/products/** → product-service (port 8082)
-            - id: product-service-direct-route
-              uri: http://localhost:8082
-              predicates:
-                - Path=/api/products/**
-
-            # Route 4: /api/auth/**, /api/v1/auth/** → identity-service (port 8080)
+            # Route 3: /api/auth/**, /api/v1/auth/** → identity-service (port 8080)
             - id: identity-service-direct-route
               uri: http://localhost:8080
               predicates:

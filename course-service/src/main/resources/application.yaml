@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: course-service
+
+server:
+  port: 8082
+
+logging:
+  level:
+    com.example.courseservice: DEBUG
+  pattern:
+    correlation: "[%X{correlationId:-}] "
+

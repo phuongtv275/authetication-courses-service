@@ -2,6 +2,7 @@ package com.example.identityservice.security.jwt;
 
 
 import com.example.identityservice.models.entities.User;
+import com.example.identityservice.security.permission.PermissionResolver;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -45,9 +46,15 @@ public class JwtUtils {
         return this.signKey;
     }
 
+    private final PermissionResolver permissionResolver;
+
+    public JwtUtils(PermissionResolver permissionResolver) {
+        this.permissionResolver = permissionResolver;
+    }
+
     /**
-     * Tạo Access Token (JWT) ngắn hạn chứa thông tin người dùng, vai trò (roles)
-     * và claim định danh duy nhất jti (JWT ID) để hỗ trợ Blacklist/Revocation khi Logout.
+     * Tạo Access Token (JWT) ngắn hạn chứa thông tin người dùng, vai trò (role/roles),
+     * quyền hạn chi tiết (permissions - PBAC) và claim định danh duy nhất jti (JWT ID).
      *
      * @param user đối tượng User chứa thông tin tài khoản và danh sách quyền
      * @return chuỗi JWT Access Token
@@ -60,10 +67,14 @@ public class JwtUtils {
                 : List.of();
 
         String jti = UUID.randomUUID().toString();
+        String primaryRole = permissionResolver.resolvePrimaryRole(user);
+        List<String> permissions = permissionResolver.resolvePermissions(user);
 
         Map<String, Object> claims = new HashMap<>();
         claims.put("username", user.getUsername());
+        claims.put("role", primaryRole);
         claims.put("roles", roleNames);
+        claims.put("permissions", permissions);
         claims.put(Claims.ID, jti);
 
         return Jwts.builder()
@@ -116,6 +127,38 @@ public class JwtUtils {
      */
     public String extractUsername(String token) {
         return extractAllClaims(token).getSubject();
+    }
+
+    /**
+     * Trích xuất role từ token.
+     */
+    public String extractRole(String token) {
+        Object role = extractAllClaims(token).get("role");
+        return role != null ? role.toString() : null;
+    }
+
+    /**
+     * Trích xuất danh sách roles từ token.
+     */
+    @SuppressWarnings("unchecked")
+    public List<String> extractRoles(String token) {
+        Object roles = extractAllClaims(token).get("roles");
+        if (roles instanceof List<?>) {
+            return (List<String>) roles;
+        }
+        return List.of();
+    }
+
+    /**
+     * Trích xuất danh sách permissions từ token.
+     */
+    @SuppressWarnings("unchecked")
+    public List<String> extractPermissions(String token) {
+        Object permissions = extractAllClaims(token).get("permissions");
+        if (permissions instanceof List<?>) {
+            return (List<String>) permissions;
+        }
+        return List.of();
     }
 
     /**
