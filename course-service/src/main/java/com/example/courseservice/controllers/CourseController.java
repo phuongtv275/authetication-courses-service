@@ -9,6 +9,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -50,7 +51,8 @@ public class CourseController {
             Authentication authentication
     ) {
         String username = authentication != null ? authentication.getName() : "anonymous";
-        log.info("GET /api/courses — user: '{}', page: {}, size: {}", username, page, size);
+        String correlationId = MDC.get("correlationId");
+        log.info("[{}] GET /api/courses — user: '{}', page: {}, size: {}", correlationId, username, page, size);
 
         Pageable pageable = PageRequest.of(page, size);
         Page<CourseRes> coursePage = courseService.getAllCourses(pageable);
@@ -68,7 +70,8 @@ public class CourseController {
             Authentication authentication
     ) {
         String username = authentication != null ? authentication.getName() : "anonymous";
-        log.info("GET /api/courses/{} — user: '{}'", id, username);
+        String correlationId = MDC.get("correlationId");
+        log.info("[{}] GET /api/courses/{} — user: '{}'", correlationId, id, username);
         return ResponseEntity.ok(courseService.getCourseById(id));
     }
 
@@ -83,7 +86,8 @@ public class CourseController {
             Authentication authentication
     ) {
         String username = authentication != null ? authentication.getName() : "anonymous";
-        log.info("POST /api/courses — user: '{}', title: '{}'", username, req.title());
+        String correlationId = MDC.get("correlationId");
+        log.info("[{}] POST /api/courses — user: '{}', title: '{}'", correlationId, username, req.title());
         CourseRes created = courseService.createCourse(req);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }

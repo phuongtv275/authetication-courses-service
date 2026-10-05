@@ -45,9 +45,16 @@ public class JwtUtils {
         return this.signKey;
     }
 
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private com.example.identityservice.security.permission.PermissionResolver permissionResolver =
-            new com.example.identityservice.security.permission.PermissionResolver();
+    private final com.example.identityservice.security.permission.PermissionResolver permissionResolver;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public JwtUtils(com.example.identityservice.security.permission.PermissionResolver permissionResolver) {
+        this.permissionResolver = permissionResolver;
+    }
+
+    public JwtUtils() {
+        this(new com.example.identityservice.security.permission.PermissionResolver());
+    }
 
     /**
      * Tạo Access Token (JWT) ngắn hạn chứa thông tin người dùng, vai trò (role/roles),

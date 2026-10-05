@@ -61,28 +61,15 @@ class CourseControllerSecurityTest {
     }
 
     @Test
-    @DisplayName("GET /api/courses with X-User-Role: STUDENT should return 200 OK (RBAC fallback - Bài 3)")
-    void shouldAllowStudentRoleToGetCourses() throws Exception {
-        CourseRes course = CourseRes.builder()
-                .id(1L)
-                .title("Spring Boot")
-                .instructor("Instructor A")
-                .durationHours(20)
-                .createdAt(LocalDateTime.now())
-                .build();
-        Pageable pageable = PageRequest.of(0, 10);
-        when(courseService.getAllCourses(any(Pageable.class)))
-                .thenReturn(new PageImpl<>(List.of(course), pageable, 1));
-
+    @DisplayName("GET /api/courses with X-User-Role: STUDENT but missing X-User-Permissions should return 403 Forbidden (PBAC - Role alone has no authorities)")
+    void shouldDenyStudentRoleWhenPermissionsHeaderMissing() throws Exception {
         mockMvc.perform(get("/api/courses")
                         .header("X-User-Id", "student_alice")
                         .header("X-User-Role", "STUDENT"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].title").value("Spring Boot"))
-                .andExpect(jsonPath("$.page").value(0))
-                .andExpect(jsonPath("$.totalElements").value(1));
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
 
-        verify(courseService).getAllCourses(any(Pageable.class));
+        verify(courseService, never()).getAllCourses(any());
     }
 
     @Test
@@ -173,33 +160,68 @@ class CourseControllerSecurityTest {
     }
 
     @Test
-    @DisplayName("POST /api/courses with X-User-Role: INSTRUCTOR should return 201 Created (RBAC fallback - Bài 3)")
-    void shouldAllowInstructorRoleToCreateCourse() throws Exception {
+    @DisplayName("POST /api/courses with Role INSTRUCTOR but missing X-User-Permissions should return 403 Forbidden (Pure PBAC)")
+    void shouldDenyInstructorWhenPermissionsHeaderMissing() throws Exception {
         CreateCourseReq req = new CreateCourseReq(
                 "Kubernetes for Developers",
                 "Deploy and scale microservices with K8s",
                 "Bob Instructor",
                 35
         );
-        CourseRes res = CourseRes.builder()
-                .id(1L)
-                .title("Kubernetes for Developers")
-                .instructor("Bob Instructor")
-                .durationHours(35)
-                .createdAt(LocalDateTime.now())
-                .build();
-        when(courseService.createCourse(any(CreateCourseReq.class))).thenReturn(res);
 
         mockMvc.perform(post("/api/courses")
                         .header("X-User-Id", "instructor_bob")
                         .header("X-User-Role", "INSTRUCTOR")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(req)))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.title").value("Kubernetes for Developers"));
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
 
-        verify(courseService).createCourse(any(CreateCourseReq.class));
+        verify(courseService, never()).createCourse(any());
+    }
+
+    @Test
+    @DisplayName("POST /api/courses with Role INSTRUCTOR and empty permissions [] should return 403 Forbidden (Pure PBAC)")
+    void shouldDenyInstructorWhenPermissionsEmpty() throws Exception {
+        CreateCourseReq req = new CreateCourseReq(
+                "Kubernetes for Developers",
+                "Deploy and scale microservices with K8s",
+                "Bob Instructor",
+                35
+        );
+
+        mockMvc.perform(post("/api/courses")
+                        .header("X-User-Id", "instructor_bob")
+                        .header("X-User-Role", "INSTRUCTOR")
+                        .header("X-User-Permissions", "[]")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+
+        verify(courseService, never()).createCourse(any());
+    }
+
+    @Test
+    @DisplayName("POST /api/courses with Role INSTRUCTOR and malformed permissions header should return 403 Forbidden (Pure PBAC)")
+    void shouldDenyInstructorWhenPermissionsMalformed() throws Exception {
+        CreateCourseReq req = new CreateCourseReq(
+                "Kubernetes for Developers",
+                "Deploy and scale microservices with K8s",
+                "Bob Instructor",
+                35
+        );
+
+        mockMvc.perform(post("/api/courses")
+                        .header("X-User-Id", "instructor_bob")
+                        .header("X-User-Role", "INSTRUCTOR")
+                        .header("X-User-Permissions", "{malformed-json")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+
+        verify(courseService, never()).createCourse(any());
     }
 
     @Test

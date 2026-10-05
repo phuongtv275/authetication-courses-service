@@ -22,6 +22,8 @@ import java.util.Set;
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {
 
+    public static final String DEFAULT_PASSWORD = "password123";
+
     private final RoleRepository roleRepository;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -42,7 +44,7 @@ public class DataInitializer implements CommandLineRunner {
             User student = User.builder()
                     .fullName("Nguyen Van Student")
                     .username("student")
-                    .password(passwordEncoder.encode("password123"))
+                    .password(passwordEncoder.encode(DEFAULT_PASSWORD))
                     .roles(Set.of(roleStudent))
                     .build();
             userRepository.save(student);
@@ -54,7 +56,7 @@ public class DataInitializer implements CommandLineRunner {
             User instructor = User.builder()
                     .fullName("Tran Van Instructor")
                     .username("instructor")
-                    .password(passwordEncoder.encode("password123"))
+                    .password(passwordEncoder.encode(DEFAULT_PASSWORD))
                     .roles(Set.of(roleInstructor))
                     .build();
             userRepository.save(instructor);
@@ -66,7 +68,7 @@ public class DataInitializer implements CommandLineRunner {
             User admin = User.builder()
                     .fullName("Administrator")
                     .username("admin")
-                    .password(passwordEncoder.encode("password123"))
+                    .password(passwordEncoder.encode(DEFAULT_PASSWORD))
                     .roles(Set.of(roleAdmin))
                     .build();
             userRepository.save(admin);
