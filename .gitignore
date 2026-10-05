@@ -1,1 +1,6 @@
 .idea/
+.agents/
+AGENTS.md
+graphify-out/
+docs/
+plan/

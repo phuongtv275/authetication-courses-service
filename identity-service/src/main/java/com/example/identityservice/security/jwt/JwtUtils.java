@@ -61,9 +61,35 @@ public class JwtUtils {
 
         String jti = UUID.randomUUID().toString();
 
+        // Xác định primary role
+        String primaryRole = "";
+        if (roleNames.contains("INSTRUCTOR")) {
+            primaryRole = "INSTRUCTOR";
+        } else if (roleNames.contains("STUDENT")) {
+            primaryRole = "STUDENT";
+        } else if (roleNames.contains("ROLE_ADMIN")) {
+            primaryRole = "ROLE_ADMIN";
+        } else if (roleNames.contains("ROLE_USER")) {
+            primaryRole = "ROLE_USER";
+        } else if (!roleNames.isEmpty()) {
+            primaryRole = roleNames.get(0);
+        }
+
+        // Xác định danh sách permissions tương ứng (PBAC)
+        java.util.LinkedHashSet<String> permissions = new java.util.LinkedHashSet<>();
+        if (roleNames.contains("INSTRUCTOR") || roleNames.contains("ROLE_ADMIN")) {
+            permissions.add("COURSE_READ");
+            permissions.add("COURSE_WRITE");
+        }
+        if (roleNames.contains("STUDENT") || roleNames.contains("ROLE_USER")) {
+            permissions.add("COURSE_READ");
+        }
+
         Map<String, Object> claims = new HashMap<>();
         claims.put("username", user.getUsername());
+        claims.put("role", primaryRole);
         claims.put("roles", roleNames);
+        claims.put("permissions", new java.util.ArrayList<>(permissions));
         claims.put(Claims.ID, jti);
 
         return Jwts.builder()
@@ -116,6 +142,38 @@ public class JwtUtils {
      */
     public String extractUsername(String token) {
         return extractAllClaims(token).getSubject();
+    }
+
+    /**
+     * Trích xuất role từ token.
+     */
+    public String extractRole(String token) {
+        Object role = extractAllClaims(token).get("role");
+        return role != null ? role.toString() : null;
+    }
+
+    /**
+     * Trích xuất danh sách roles từ token.
+     */
+    @SuppressWarnings("unchecked")
+    public List<String> extractRoles(String token) {
+        Object roles = extractAllClaims(token).get("roles");
+        if (roles instanceof List<?>) {
+            return (List<String>) roles;
+        }
+        return List.of();
+    }
+
+    /**
+     * Trích xuất danh sách permissions từ token.
+     */
+    @SuppressWarnings("unchecked")
+    public List<String> extractPermissions(String token) {
+        Object permissions = extractAllClaims(token).get("permissions");
+        if (permissions instanceof List<?>) {
+            return (List<String>) permissions;
+        }
+        return List.of();
     }
 
     /**

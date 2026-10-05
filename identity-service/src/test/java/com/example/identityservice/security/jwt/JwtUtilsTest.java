@@ -57,10 +57,15 @@ class JwtUtilsTest {
 
         assertEquals("john_doe", claims.getSubject());
         assertEquals("john_doe", claims.get("username"));
+        assertEquals("ROLE_USER", claims.get("role"));
         @SuppressWarnings("unchecked")
         List<String> roles = (List<String>) claims.get("roles");
         assertNotNull(roles);
         assertTrue(roles.contains("ROLE_USER"));
+        @SuppressWarnings("unchecked")
+        List<String> permissions = (List<String>) claims.get("permissions");
+        assertNotNull(permissions);
+        assertTrue(permissions.contains("COURSE_READ"));
         assertNotNull(claims.getExpiration());
         assertTrue(claims.getExpiration().getTime() > System.currentTimeMillis());
 
@@ -69,8 +74,28 @@ class JwtUtilsTest {
         assertFalse(claims.getId().isBlank());
         assertEquals(claims.getId(), jwtUtils.extractJti(token));
         assertEquals("john_doe", jwtUtils.extractUsername(token));
+        assertEquals("ROLE_USER", jwtUtils.extractRole(token));
+        assertEquals(List.of("COURSE_READ"), jwtUtils.extractPermissions(token));
         assertNotNull(jwtUtils.extractExpiration(token));
         assertTrue(jwtUtils.validateToken(token));
+    }
+
+    @Test
+    @DisplayName("generateAccessToken for STUDENT and INSTRUCTOR should have correct role and permissions")
+    void shouldGenerateCorrectRoleAndPermissionsForStudentAndInstructor() {
+        Role studentRole = Role.builder().id(1L).roleName(RoleName.STUDENT).build();
+        User student = User.builder().username("alice").roles(Set.of(studentRole)).build();
+        String studentToken = jwtUtils.generateAccessToken(student);
+        assertEquals("STUDENT", jwtUtils.extractRole(studentToken));
+        assertEquals(List.of("COURSE_READ"), jwtUtils.extractPermissions(studentToken));
+
+        Role instructorRole = Role.builder().id(2L).roleName(RoleName.INSTRUCTOR).build();
+        User instructor = User.builder().username("bob").roles(Set.of(instructorRole)).build();
+        String instructorToken = jwtUtils.generateAccessToken(instructor);
+        assertEquals("INSTRUCTOR", jwtUtils.extractRole(instructorToken));
+        List<String> instructorPerms = jwtUtils.extractPermissions(instructorToken);
+        assertTrue(instructorPerms.contains("COURSE_READ"));
+        assertTrue(instructorPerms.contains("COURSE_WRITE"));
     }
 
     @Test
