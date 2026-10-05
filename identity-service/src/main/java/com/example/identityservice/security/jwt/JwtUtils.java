@@ -2,6 +2,7 @@ package com.example.identityservice.security.jwt;
 
 
 import com.example.identityservice.models.entities.User;
+import com.example.identityservice.security.permission.PermissionResolver;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -45,15 +46,10 @@ public class JwtUtils {
         return this.signKey;
     }
 
-    private final com.example.identityservice.security.permission.PermissionResolver permissionResolver;
+    private final PermissionResolver permissionResolver;
 
-    @org.springframework.beans.factory.annotation.Autowired
-    public JwtUtils(com.example.identityservice.security.permission.PermissionResolver permissionResolver) {
+    public JwtUtils(PermissionResolver permissionResolver) {
         this.permissionResolver = permissionResolver;
-    }
-
-    public JwtUtils() {
-        this(new com.example.identityservice.security.permission.PermissionResolver());
     }
 
     /**

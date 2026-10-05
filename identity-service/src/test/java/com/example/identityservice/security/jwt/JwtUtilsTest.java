@@ -25,7 +25,7 @@ class JwtUtilsTest {
 
     @BeforeEach
     void setUp() {
-        jwtUtils = new JwtUtils();
+        jwtUtils = new JwtUtils(new com.example.identityservice.security.permission.PermissionResolver());
         ReflectionTestUtils.setField(jwtUtils, "secretKey", VALID_BASE64_SECRET);
         ReflectionTestUtils.setField(jwtUtils, "accessTokenExpiration", 900000L);
         jwtUtils.init();
@@ -107,7 +107,7 @@ class JwtUtilsTest {
     @Test
     @DisplayName("init should fail fast on startup if secret is not valid Base64")
     void shouldFailFastWhenSecretIsNotBase64() {
-        JwtUtils badJwtUtils = new JwtUtils();
+        JwtUtils badJwtUtils = new JwtUtils(new com.example.identityservice.security.permission.PermissionResolver());
         ReflectionTestUtils.setField(badJwtUtils, "secretKey", "invalid_base64_secret_!@#$%");
 
         assertThrows(io.jsonwebtoken.io.DecodingException.class, badJwtUtils::init);
