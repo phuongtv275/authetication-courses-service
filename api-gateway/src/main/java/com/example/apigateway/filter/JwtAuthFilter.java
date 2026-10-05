@@ -117,20 +117,39 @@ public class JwtAuthFilter implements WebFilter, Ordered {
                 return writeErrorResponse(exchange, HttpStatus.UNAUTHORIZED, "Invalid token: missing subject", path);
             }
 
-            // Trích xuất roles từ JWT claims (được serialize thành List<String> bởi identity-service)
-            // Ví dụ: ["ROLE_ADMIN", "ROLE_USER"]
+            // Trích xuất claim 'role' (dạng chuỗi đơn theo Bài 1, 2)
+            String roleClaim = claims.get("role", String.class);
+
+            // Trích xuất roles từ JWT claims (được serialize thành List<String>)
             @SuppressWarnings("unchecked")
             List<String> roles = claims.get("roles", List.class);
-            // Lấy role có quyền cao nhất (ROLE_ADMIN ưu tiên) nếu có roles
-            String primaryRole = (roles != null && !roles.isEmpty())
-                    ? roles.stream()
-                            .filter(r -> r.equals("ROLE_ADMIN"))
-                            .findFirst()
-                            .orElse(roles.get(0))
-                    : "";
 
-            log.debug("[{}] JWT valid — user: '{}', jti: '{}', roles: {}, path: {}",
-                    correlationId, username, jti, roles, path);
+            String resolvedRole = "";
+            if (roleClaim != null && !roleClaim.isBlank()) {
+                resolvedRole = roleClaim;
+            } else if (roles != null && !roles.isEmpty()) {
+                resolvedRole = roles.stream()
+                        .filter(r -> r.equals("INSTRUCTOR") || r.equals("ROLE_ADMIN"))
+                        .findFirst()
+                        .orElse(roles.get(0));
+            }
+            final String primaryRole = resolvedRole;
+
+            // Trích xuất claim 'permissions' (PBAC - Bài 6) và serialize thành JSON chuỗi
+            @SuppressWarnings("unchecked")
+            List<String> permissions = claims.get("permissions", List.class);
+            String serializedPermissions = "[]";
+            if (permissions != null && !permissions.isEmpty()) {
+                try {
+                    serializedPermissions = objectMapper.writeValueAsString(permissions);
+                } catch (JsonProcessingException e) {
+                    log.warn("[{}] Failed to serialize permissions to JSON: {}", correlationId, e.getMessage());
+                }
+            }
+            final String permissionsJson = serializedPermissions;
+
+            log.debug("[{}] JWT valid — user: '{}', jti: '{}', role: '{}', permissions: {}, path: {}",
+                    correlationId, username, jti, primaryRole, permissionsJson, path);
 
             // Kiểm tra claim jti
             if (jti == null || jti.isBlank()) {
@@ -172,9 +191,10 @@ public class JwtAuthFilter implements WebFilter, Ordered {
                         // Bước 6: Mutate request — gắn User Context headers để downstream service dùng
                         ServerHttpRequest mutatedRequest = request.mutate()
                                 .header(CORRELATION_ID_HEADER, correlationId)
-                                .header("X-User-Id", username)           // Tên user (subject của JWT)
-                                .header("X-User-Role", primaryRole)      // Role chính của user
+                                .header("X-User-Id", username)                     // Tên user (subject của JWT)
+                                .header("X-User-Role", primaryRole)                // Role chính của user (STUDENT / INSTRUCTOR)
                                 .header("X-User-Roles", String.join(",", roles != null ? roles : List.of()))
+                                .header("X-User-Permissions", permissionsJson)     // JSON array chuỗi (PBAC - Bài 6)
                                 .build();
 
                         return chain.filter(exchange.mutate().request(mutatedRequest).build());

@@ -69,6 +69,10 @@ class JwtAuthFilterTest {
     }
 
     private String createToken(String username, String jti, List<String> roles, long expirationOffsetMs) {
+        return createToken(username, jti, null, roles, null, expirationOffsetMs);
+    }
+
+    private String createToken(String username, String jti, String role, List<String> roles, List<String> permissions, long expirationOffsetMs) {
         var builder = Jwts.builder()
                 .subject(username)
                 .issuedAt(new Date())
@@ -78,8 +82,14 @@ class JwtAuthFilterTest {
         if (jti != null) {
             builder.id(jti);
         }
+        if (role != null) {
+            builder.claim("role", role);
+        }
         if (roles != null) {
             builder.claim("roles", roles);
+        }
+        if (permissions != null) {
+            builder.claim("permissions", permissions);
         }
         return builder.compact();
     }
@@ -188,6 +198,7 @@ class JwtAuthFilterTest {
             assertEquals("admin_user", headers.getFirst("X-User-Id"));
             assertEquals("ROLE_ADMIN", headers.getFirst("X-User-Role"));
             assertEquals("ROLE_ADMIN,ROLE_USER", headers.getFirst("X-User-Roles"));
+            assertEquals("[]", headers.getFirst("X-User-Permissions"));
             return Mono.empty();
         });
 
@@ -195,6 +206,38 @@ class JwtAuthFilterTest {
                 .verifyComplete();
 
         assertNull(exchange.getResponse().getStatusCode(), "Status code should remain null on successful pass");
+        verify(redisTemplate).hasKey("blacklist:" + jti);
+        verify(filterChain).filter(any());
+    }
+
+    @Test
+    @DisplayName("Request with STUDENT role and COURSE_READ permission to /api/courses should inject headers correctly")
+    void shouldPassAndInjectStudentRoleAndPermissionsForCourses() {
+        String jti = UUID.randomUUID().toString();
+        String validToken = createToken("student_alice", jti, "STUDENT", List.of("STUDENT"), List.of("COURSE_READ"), 60000);
+
+        MockServerHttpRequest request = MockServerHttpRequest.get("/api/courses")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + validToken)
+                .build();
+        MockServerWebExchange exchange = MockServerWebExchange.from(request);
+
+        when(redisTemplate.hasKey("blacklist:" + jti)).thenReturn(Mono.just(false));
+        when(filterChain.filter(any())).thenAnswer(invocation -> {
+            org.springframework.web.server.ServerWebExchange mutatedExchange = invocation.getArgument(0);
+            HttpHeaders headers = mutatedExchange.getRequest().getHeaders();
+
+            assertNotNull(headers.getFirst("X-Correlation-Id"));
+            assertEquals("student_alice", headers.getFirst("X-User-Id"));
+            assertEquals("STUDENT", headers.getFirst("X-User-Role"));
+            assertEquals("STUDENT", headers.getFirst("X-User-Roles"));
+            assertEquals("[\"COURSE_READ\"]", headers.getFirst("X-User-Permissions"));
+            return Mono.empty();
+        });
+
+        StepVerifier.create(jwtAuthFilter.filter(exchange, filterChain))
+                .verifyComplete();
+
+        assertNull(exchange.getResponse().getStatusCode());
         verify(redisTemplate).hasKey("blacklist:" + jti);
         verify(filterChain).filter(any());
     }
