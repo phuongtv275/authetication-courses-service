@@ -45,9 +45,13 @@ public class JwtUtils {
         return this.signKey;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.example.identityservice.security.permission.PermissionResolver permissionResolver =
+            new com.example.identityservice.security.permission.PermissionResolver();
+
     /**
-     * Tạo Access Token (JWT) ngắn hạn chứa thông tin người dùng, vai trò (roles)
-     * và claim định danh duy nhất jti (JWT ID) để hỗ trợ Blacklist/Revocation khi Logout.
+     * Tạo Access Token (JWT) ngắn hạn chứa thông tin người dùng, vai trò (role/roles),
+     * quyền hạn chi tiết (permissions - PBAC) và claim định danh duy nhất jti (JWT ID).
      *
      * @param user đối tượng User chứa thông tin tài khoản và danh sách quyền
      * @return chuỗi JWT Access Token
@@ -60,36 +64,14 @@ public class JwtUtils {
                 : List.of();
 
         String jti = UUID.randomUUID().toString();
-
-        // Xác định primary role
-        String primaryRole = "";
-        if (roleNames.contains("INSTRUCTOR")) {
-            primaryRole = "INSTRUCTOR";
-        } else if (roleNames.contains("STUDENT")) {
-            primaryRole = "STUDENT";
-        } else if (roleNames.contains("ROLE_ADMIN")) {
-            primaryRole = "ROLE_ADMIN";
-        } else if (roleNames.contains("ROLE_USER")) {
-            primaryRole = "ROLE_USER";
-        } else if (!roleNames.isEmpty()) {
-            primaryRole = roleNames.get(0);
-        }
-
-        // Xác định danh sách permissions tương ứng (PBAC)
-        java.util.LinkedHashSet<String> permissions = new java.util.LinkedHashSet<>();
-        if (roleNames.contains("INSTRUCTOR") || roleNames.contains("ROLE_ADMIN")) {
-            permissions.add("COURSE_READ");
-            permissions.add("COURSE_WRITE");
-        }
-        if (roleNames.contains("STUDENT") || roleNames.contains("ROLE_USER")) {
-            permissions.add("COURSE_READ");
-        }
+        String primaryRole = permissionResolver.resolvePrimaryRole(user);
+        List<String> permissions = permissionResolver.resolvePermissions(user);
 
         Map<String, Object> claims = new HashMap<>();
         claims.put("username", user.getUsername());
         claims.put("role", primaryRole);
         claims.put("roles", roleNames);
-        claims.put("permissions", new java.util.ArrayList<>(permissions));
+        claims.put("permissions", permissions);
         claims.put(Claims.ID, jti);
 
         return Jwts.builder()

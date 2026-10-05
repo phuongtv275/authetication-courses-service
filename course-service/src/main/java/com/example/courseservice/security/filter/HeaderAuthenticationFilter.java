@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -22,20 +23,16 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * HeaderAuthenticationFilter — Bộ lọc xác thực trực tiếp qua HTTP Headers từ API Gateway.
+ * HeaderAuthenticationFilter — Bộ lọc xác thực và chuyển đổi quyền từ API Gateway.
  *
  * Note giải thích logic (theo AGENTS.md, Bài tập 3 và Bài tập 6):
- * 1. Course Service đóng vai trò Resource Server phía sau API Gateway.
- * 2. Resource Server KHÔNG cần thư viện JJWT hay Secret Key để giải mã lại JWT, vì Gateway đã đóng vai trò
- *    "Trạm gác biên phòng" kiểm tra chữ ký và Redis Blacklist trước khi chuyển tiếp request.
- * 3. Filter này đọc trực tiếp:
- *    - X-User-Id: định danh người dùng (subject / username).
- *    - X-User-Role / X-User-Roles: vai trò người dùng (STUDENT, INSTRUCTOR, ...).
- *    - X-User-Permissions: chuỗi JSON chứa danh sách quyền (PBAC: ["COURSE_READ", "COURSE_WRITE"]).
- * 4. Chuyển đổi toàn bộ quyền (Permissions) và vai trò (Roles) thành SimpleGrantedAuthority để Spring Security
- *    Method Security (@PreAuthorize) phân quyền chính xác.
- * 5. Nếu không có header nhận diện người dùng hoặc danh sách quyền rỗng, không nạp Authentication,
- *    Spring Security sẽ tự động trả về 401 Unauthorized qua CustomAuthenticationEntryPoint.
+ * 1. Resource Server Course-Service hoạt động sau Gateway nên không parse lại token JWT.
+ * 2. Yêu cầu bắt buộc header X-User-Id để định danh danh tính người dùng. Nếu không có X-User-Id,
+ *    không nạp Authentication để Spring Security xử lý 401 Unauthorized.
+ * 3. Ưu tiên phân quyền theo Hành động (PBAC - Bài 6): Đọc X-User-Permissions (JSON array chuỗi).
+ *    Nếu có X-User-Permissions, chuyển đổi thành các GrantedAuthority tương ứng (COURSE_READ, COURSE_WRITE,...).
+ * 4. Nếu không có X-User-Permissions (hỗ trợ chuyển giao RBAC - Bài 3), fallback đọc X-User-Role / X-User-Roles.
+ * 5. Log đầy đủ correlationId để phục vụ việc trace lỗi xuyên suốt các services.
  */
 @Slf4j
 @Component
@@ -54,47 +51,55 @@ public class HeaderAuthenticationFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
 
+        String correlationId = MDC.get("correlationId");
         String userId = request.getHeader(HEADER_USER_ID);
         String permissionsJson = request.getHeader(HEADER_USER_PERMISSIONS);
         String singleRole = request.getHeader(HEADER_USER_ROLE);
         String multiRoles = request.getHeader(HEADER_USER_ROLES);
 
-        // Nếu có ít nhất một thông tin nhận diện người dùng hoặc quyền từ Gateway
-        if (StringUtils.hasText(userId) || StringUtils.hasText(permissionsJson) || StringUtils.hasText(singleRole)) {
+        // Bắt buộc phải có X-User-Id để xác định danh tính hợp lệ từ Gateway
+        if (StringUtils.hasText(userId)) {
             Set<SimpleGrantedAuthority> authorities = new HashSet<>();
 
-            // 1. Phân giải Permissions từ Header JSON (PBAC - Bài 6)
+            // 1. PBAC (Bài 6): Đọc permissions từ chuỗi JSON
+            boolean hasPermissions = false;
             if (StringUtils.hasText(permissionsJson)) {
                 try {
                     List<String> permissions = objectMapper.readValue(permissionsJson, new TypeReference<List<String>>() {});
-                    if (permissions != null) {
+                    if (permissions != null && !permissions.isEmpty()) {
                         for (String perm : permissions) {
                             if (StringUtils.hasText(perm)) {
                                 authorities.add(new SimpleGrantedAuthority(perm.trim()));
                             }
                         }
+                        hasPermissions = true;
                     }
                 } catch (Exception e) {
-                    log.warn("Failed to parse X-User-Permissions JSON '{}': {}", permissionsJson, e.getMessage());
+                    log.warn("[{}] Failed to parse X-User-Permissions JSON (length={}): {}",
+                            correlationId, permissionsJson.length(), e.getMessage());
                 }
             }
 
-            // 2. Phân giải Roles từ Header (RBAC - Bài 3)
-            if (StringUtils.hasText(multiRoles)) {
-                for (String role : multiRoles.split(",")) {
-                    addRoleAuthorities(authorities, role.trim());
+            // 2. Fallback sang RBAC (Bài 3) nếu không có permissions header
+            if (!hasPermissions) {
+                String role = StringUtils.hasText(singleRole) ? singleRole : multiRoles;
+                if (StringUtils.hasText(role)) {
+                    if (role.contains("INSTRUCTOR") || role.contains("ADMIN")) {
+                        authorities.add(new SimpleGrantedAuthority("COURSE_READ"));
+                        authorities.add(new SimpleGrantedAuthority("COURSE_WRITE"));
+                    } else if (role.contains("STUDENT") || role.contains("USER")) {
+                        authorities.add(new SimpleGrantedAuthority("COURSE_READ"));
+                    }
                 }
-            } else if (StringUtils.hasText(singleRole)) {
-                addRoleAuthorities(authorities, singleRole.trim());
             }
 
-            String principal = StringUtils.hasText(userId) ? userId : "gateway-user";
             UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(principal, null, authorities);
+                    new UsernamePasswordAuthenticationToken(userId.trim(), null, authorities);
             authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
             SecurityContextHolder.getContext().setAuthentication(authentication);
-            log.debug("Authenticated request from Gateway — user: '{}', authorities: {}", principal, authorities);
+            log.debug("[{}] Successfully authenticated request from Gateway — user: '{}', authorities: {}",
+                    correlationId, userId, authorities);
         }
 
         filterChain.doFilter(request, response);
@@ -104,7 +109,6 @@ public class HeaderAuthenticationFilter extends OncePerRequestFilter {
         if (!StringUtils.hasText(role)) {
             return;
         }
-        // Thêm cả dạng nguyên bản (hasAuthority('STUDENT')) và tiền tố ROLE_ (hasRole('STUDENT'))
         authorities.add(new SimpleGrantedAuthority(role));
         if (!role.startsWith("ROLE_")) {
             authorities.add(new SimpleGrantedAuthority("ROLE_" + role));

@@ -46,7 +46,7 @@ public class DataInitializer implements CommandLineRunner {
                     .roles(Set.of(roleStudent))
                     .build();
             userRepository.save(student);
-            log.info("Initialized default user: student / password123 (Role: STUDENT)");
+            log.info("Initialized default user: student (Role: STUDENT)");
         }
 
         // Tài khoản Instructor (có quyền COURSE_READ và COURSE_WRITE)
@@ -58,7 +58,7 @@ public class DataInitializer implements CommandLineRunner {
                     .roles(Set.of(roleInstructor))
                     .build();
             userRepository.save(instructor);
-            log.info("Initialized default user: instructor / password123 (Role: INSTRUCTOR)");
+            log.info("Initialized default user: instructor (Role: INSTRUCTOR)");
         }
 
         // Tài khoản Admin
@@ -70,7 +70,7 @@ public class DataInitializer implements CommandLineRunner {
                     .roles(Set.of(roleAdmin))
                     .build();
             userRepository.save(admin);
-            log.info("Initialized default user: admin / password123 (Role: ROLE_ADMIN)");
+            log.info("Initialized default user: admin (Role: ROLE_ADMIN)");
         }
 
         log.info("Seed data initialization completed.");

@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -60,7 +61,7 @@ class CourseControllerSecurityTest {
     }
 
     @Test
-    @DisplayName("GET /api/courses with X-User-Role: STUDENT should return 200 OK (RBAC - Bài 3)")
+    @DisplayName("GET /api/courses with X-User-Role: STUDENT should return 200 OK (RBAC fallback - Bài 3)")
     void shouldAllowStudentRoleToGetCourses() throws Exception {
         CourseRes course = CourseRes.builder()
                 .id(1L)
@@ -69,7 +70,7 @@ class CourseControllerSecurityTest {
                 .durationHours(20)
                 .createdAt(LocalDateTime.now())
                 .build();
-        Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 10);
+        Pageable pageable = PageRequest.of(0, 10);
         when(courseService.getAllCourses(any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(course), pageable, 1));
 
@@ -77,7 +78,9 @@ class CourseControllerSecurityTest {
                         .header("X-User-Id", "student_alice")
                         .header("X-User-Role", "STUDENT"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.content[0].title").value("Spring Boot"));
+                .andExpect(jsonPath("$.content[0].title").value("Spring Boot"))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.totalElements").value(1));
 
         verify(courseService).getAllCourses(any(Pageable.class));
     }
@@ -92,7 +95,7 @@ class CourseControllerSecurityTest {
                 .durationHours(20)
                 .createdAt(LocalDateTime.now())
                 .build();
-        Pageable pageable = org.springframework.data.domain.PageRequest.of(0, 10);
+        Pageable pageable = PageRequest.of(0, 10);
         when(courseService.getAllCourses(any(Pageable.class)))
                 .thenReturn(new PageImpl<>(List.of(course), pageable, 1));
 
@@ -148,7 +151,29 @@ class CourseControllerSecurityTest {
     }
 
     @Test
-    @DisplayName("POST /api/courses with X-User-Role: INSTRUCTOR should return 201 Created (RBAC - Bài 3)")
+    @DisplayName("POST /api/courses with Role INSTRUCTOR but Permissions [\"COURSE_READ\"] should return 403 (PBAC overrides RBAC)")
+    void shouldDenyWhenRoleIsInstructorButPermissionIsOnlyRead() throws Exception {
+        CreateCourseReq req = new CreateCourseReq(
+                "Golang Backend",
+                "Learn Go from scratch",
+                "Bob",
+                20
+        );
+
+        mockMvc.perform(post("/api/courses")
+                        .header("X-User-Id", "bob_limited")
+                        .header("X-User-Role", "INSTRUCTOR")
+                        .header("X-User-Permissions", "[\"COURSE_READ\"]")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+
+        verify(courseService, never()).createCourse(any());
+    }
+
+    @Test
+    @DisplayName("POST /api/courses with X-User-Role: INSTRUCTOR should return 201 Created (RBAC fallback - Bài 3)")
     void shouldAllowInstructorRoleToCreateCourse() throws Exception {
         CreateCourseReq req = new CreateCourseReq(
                 "Kubernetes for Developers",
@@ -225,5 +250,28 @@ class CourseControllerSecurityTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.status").value(400))
                 .andExpect(jsonPath("$.details").isMap());
+    }
+
+    @Test
+    @DisplayName("POST /api/courses with malformed JSON body should return 400 Bad Request")
+    void shouldReturn400WhenJsonIsMalformed() throws Exception {
+        mockMvc.perform(post("/api/courses")
+                        .header("X-User-Id", "instructor_bob")
+                        .header("X-User-Permissions", "[\"COURSE_WRITE\"]")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{invalid-json-body}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Malformed JSON request body or unreadable input"));
+    }
+
+    @Test
+    @DisplayName("GET /api/courses with invalid page parameter should return 400 Bad Request")
+    void shouldReturn400WhenPageIsNegative() throws Exception {
+        mockMvc.perform(get("/api/courses?page=-1")
+                        .header("X-User-Id", "student_alice")
+                        .header("X-User-Permissions", "[\"COURSE_READ\"]"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
     }
 }
